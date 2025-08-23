@@ -1,0 +1,9 @@
+# IDE settings
+.idea/
+.vscode/
+
+# build binaries
+/build
+
+# enviroment files
+.env.dev

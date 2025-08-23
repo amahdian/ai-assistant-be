@@ -1,0 +1,179 @@
+definitions:
+  msg.Message:
+    properties:
+      level:
+        $ref: '#/definitions/msg.MessageLevel'
+      text:
+        type: string
+    type: object
+  msg.MessageLevel:
+    enum:
+    - 0
+    - 1
+    - 2
+    - 3
+    type: integer
+    x-enum-varnames:
+    - Fatal
+    - Error
+    - Warning
+    - Info
+  req.Login:
+    properties:
+      email:
+        type: string
+      password:
+        type: string
+    required:
+    - email
+    - password
+    type: object
+  req.Register:
+    properties:
+      email:
+        type: string
+      password:
+        type: string
+    required:
+    - email
+    - password
+    type: object
+  resp.ErrorResponse:
+    properties:
+      error:
+        type: string
+      messages:
+        additionalProperties:
+          items:
+            $ref: '#/definitions/msg.Message'
+          type: array
+        type: object
+      success:
+        default: false
+        type: boolean
+    type: object
+  resp.HealthResponseDto:
+    properties:
+      appName:
+        type: string
+      appVersion:
+        type: string
+    type: object
+  resp.Response-string:
+    properties:
+      data:
+        type: string
+      messages:
+        additionalProperties:
+          items:
+            $ref: '#/definitions/msg.Message'
+          type: array
+        type: object
+      success:
+        default: true
+        type: boolean
+    type: object
+info:
+  contact: {}
+  description: Swagger documentation for the My App's RESTful API.
+  title: My App
+  version: "2.0"
+paths:
+  /api/v1/user/login:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: login credentials
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/req.Login'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/resp.Response-string'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/resp.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/resp.ErrorResponse'
+      security:
+      - Bearer: []
+      summary: login and get the jwt auth token
+      tags:
+      - User
+  /api/v1/user/register:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: register data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/req.Register'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/resp.Response-string'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/resp.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/resp.ErrorResponse'
+      security:
+      - Bearer: []
+      summary: register new user
+      tags:
+      - User
+  /health:
+    get:
+      consumes:
+      - application/json
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/resp.HealthResponseDto'
+      summary: health check
+      tags:
+      - Public
+  /server-time:
+    get:
+      consumes:
+      - application/json
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: string
+      summary: getServerTime
+      tags:
+      - Public
+securityDefinitions:
+  Bearer:
+    description: Type "Bearer" followed by a space and JWT token.
+    in: header
+    name: Authorization
+    type: apiKey
+    x-extension-openapi: '{"example": "value on a json format"}'
+swagger: "2.0"
