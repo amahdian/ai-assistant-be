@@ -104,3 +104,11 @@ func (stg *Stg) mustOrmSession(ctx context.Context) *ormSession {
 func (stg *Stg) User(ctx context.Context) storage.UserStorage {
 	return NewUserStg(stg.mustOrmSession(ctx))
 }
+
+func (stg *Stg) Chat(ctx context.Context) storage.ChatStorage {
+	return NewChatStg(stg.mustOrmSession(ctx))
+}
+
+func (stg *Stg) Message(ctx context.Context) storage.MessageStorage {
+	return NewMessageStg(stg.mustOrmSession(ctx))
+}

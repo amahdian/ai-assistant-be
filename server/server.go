@@ -2,6 +2,7 @@ package server
 
 import (
 	"fmt"
+	"github.com/amahdian/ai-assistant-be/clients"
 	"strings"
 
 	"github.com/amahdian/ai-assistant-be/svc/auth"
@@ -24,6 +25,7 @@ type Server struct {
 	Envs *env.Envs
 
 	Authenticator auth.Authenticator
+	GPTClient     clients.GPTClient
 	Storage       storage.Storage
 	Svc           svc.Svc
 	Router        *router.Router
@@ -42,8 +44,8 @@ func NewServer(envs *env.Envs) (*Server, error) {
 	if err := s.setupStorage(); err != nil {
 		return nil, err
 	}
-	if err := s.setupAuthenticator(); err != nil {
-		return nil, errors.Wrap(err, "failed to setup authenticator")
+	if err := s.setupInfrastructure(); err != nil {
+		return nil, errors.Wrap(err, "Failed to initialize the infrastructure.")
 	}
 	s.setupServices()
 	s.setupRouter()
@@ -112,7 +114,7 @@ func (s *Server) setupStorage() error {
 }
 
 func (s *Server) setupServices() {
-	s.Svc = svc.NewSvc(s.Storage, s.Envs)
+	s.Svc = svc.NewSvc(s.Storage, s.Envs, s.GPTClient)
 }
 
 func (s *Server) setupRouter() {
@@ -125,5 +127,21 @@ func (s *Server) setupRouter() {
 
 func (s *Server) setupAuthenticator() error {
 	s.Authenticator = auth.NewAuthenticator(s.Envs)
+	return nil
+}
+
+func (s *Server) setupGPTClient() error {
+	client := clients.NewGPTClient(s.Envs.GPT.ClientHost, s.Envs.GPT.Token)
+	s.GPTClient = client
+	return nil
+}
+
+func (s *Server) setupInfrastructure() error {
+	if err := s.setupAuthenticator(); err != nil {
+		return err
+	}
+	if err := s.setupGPTClient(); err != nil {
+		return err
+	}
 	return nil
 }

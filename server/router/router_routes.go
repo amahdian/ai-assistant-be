@@ -3,7 +3,6 @@ package router
 import (
 	"net/http"
 
-	"github.com/amahdian/ai-assistant-be/global"
 	"github.com/amahdian/ai-assistant-be/server/middleware"
 	"github.com/gin-gonic/gin"
 )
@@ -14,10 +13,10 @@ func (r *Router) setupRoutes() {
 		"",
 		middleware.VerifyAuth(r.authenticator),
 	)
-	r.apiGroup = r.authGroup.Group(global.ApiPrefix)
 
 	r.registerPublicRoutes()
 	r.registerUserRoutes()
+	r.registerChatRoutes()
 }
 
 func (r *Router) registerPublicRoutes() {
@@ -30,6 +29,15 @@ func (r *Router) registerUserRoutes() {
 	config := newRouteConfig()
 	r.registerRoute(r.publicGroup, http.MethodPost, "/user/login", r.login, config)
 	r.registerRoute(r.publicGroup, http.MethodPost, "/user/register", r.register, config)
+}
+
+func (r *Router) registerChatRoutes() {
+	config := newRouteConfig()
+	r.registerRoute(r.authGroup, http.MethodGet, "/chat", r.listChats, config)
+	r.registerRoute(r.authGroup, http.MethodGet, "/chat/:id", r.getChat, config)
+	r.registerRoute(r.authGroup, http.MethodDelete, "/chat/:id", r.deleteChat, config)
+	r.registerRoute(r.authGroup, http.MethodPost, "/chat", r.createChat, config)
+	r.registerRoute(r.authGroup, http.MethodPost, "/chat/:id", r.sendMessage, config)
 }
 
 func (r *Router) registerRoute(routerGroup *gin.RouterGroup, method, path string, handler gin.HandlerFunc, configs ...*routeConfig) {

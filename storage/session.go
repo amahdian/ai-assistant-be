@@ -4,6 +4,8 @@ import "context"
 
 type Storage interface {
 	User(ctx context.Context) UserStorage
+	Chat(ctx context.Context) ChatStorage
+	Message(ctx context.Context) MessageStorage
 }
 
 type Session interface {

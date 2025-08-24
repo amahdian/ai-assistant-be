@@ -40,24 +40,42 @@ func (stg *crudStg[M]) CreateMany(models []M) error {
 	return err
 }
 
-func (stg *crudStg[M]) FindById(id int64) (model M, err error) {
-	err = stg.db.First(&model, id).Error
+func (stg *crudStg[M]) CreateManyWithAssociation(models []M, saveAssociations bool) error {
+	if len(models) == 0 {
+		return nil
+	}
+	query := stg.db.Model(models[0])
+	if !saveAssociations {
+		query = query.Omit(clause.Associations)
+	}
+	err := query.Create(&models).Error
+	return err
+}
+
+func (stg *crudStg[M]) CreateInBatches(models []M) error {
+	if len(models) == 0 {
+		return nil
+	}
+	err := stg.db.CreateInBatches(models, CalcBestBatchSize(models)).Error
+	return err
+}
+
+func (stg *crudStg[M]) FindById(id string) (model M, err error) {
+	err = stg.db.First(&model, "id = ?", id).Error
 	if err != nil {
 		tableName := stg.getTableName()
-		entryName := pluralizer.Singular(tableName)
 		switch {
 		case errors.Is(err, gorm.ErrRecordNotFound):
-			err = errs.Newf(errs.NotFound, nil, errs.DefaultEntryNotFoundMessage, entryName, id)
+			err = stg.entityNotFoundErr(id)
 		default:
-			err = errs.Wrapf(err, "failed to get %s", tableName)
+			err = errs.Wrapf(err, "Failed to get %s.", tableName)
 		}
 		return
 	}
-
 	return
 }
 
-func (stg *crudStg[M]) ListByIds(ids []int64) (models []M, err error) {
+func (stg *crudStg[M]) ListByIds(ids []string) (models []M, err error) {
 	if len(ids) == 0 {
 		return make([]M, 0), nil
 	}
@@ -66,12 +84,44 @@ func (stg *crudStg[M]) ListByIds(ids []int64) (models []M, err error) {
 	return
 }
 
-func (stg *crudStg[M]) UpdateOne(model M, saveAssociations bool) error {
-	query := stg.db
-	if saveAssociations {
-		query = query.Session(&gorm.Session{FullSaveAssociations: true})
+func (stg *crudStg[M]) ListBy(query interface{}, args ...interface{}) (models []M, err error) {
+	err = stg.db.Where(query, args...).Find(&models).Error
+	return
+}
+
+func (stg *crudStg[M]) UpdateOne(model M, updateZeroValues bool) error {
+	// Use `Updates` to update all fields of the model, assuming it already exists
+	var err error
+	if updateZeroValues {
+		// Include zero values in the update
+		err = stg.db.Model(&model).Select("*").Updates(model).Error
+	} else {
+		// Default behavior: skip zero values
+		err = stg.db.Model(&model).Updates(model).Error
 	}
-	err := query.Debug().Save(model).Error
+	return err
+}
+
+func (stg *crudStg[M]) UpdateMany(models []M) error {
+	if len(models) == 0 {
+		return nil
+	}
+
+	err := stg.db.Transaction(func(tx *gorm.DB) error {
+		for _, model := range models {
+			if err := tx.Model(&model).Updates(model).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	return err
+}
+
+func (stg *crudStg[M]) UpsertOne(model M, saveAssociations bool) error {
+	query := stg.db
+	query = query.Session(&gorm.Session{FullSaveAssociations: saveAssociations})
+	err := query.Save(model).Error
 	return err
 }
 
@@ -84,7 +134,7 @@ func (stg *crudStg[M]) UpdatePartial(model M, returnUpdated bool) error {
 	return err
 }
 
-func (stg *crudStg[M]) UpdateMany(models []M) error {
+func (stg *crudStg[M]) UpsertMany(models []M) error {
 	if len(models) == 0 {
 		return nil
 	}
@@ -92,7 +142,44 @@ func (stg *crudStg[M]) UpdateMany(models []M) error {
 	return err
 }
 
-func (stg *crudStg[M]) ExistsById(id int64) (exists bool, err error) {
+func (stg *crudStg[M]) UpsertManyWithAssociation(models []M, saveAssociations bool) error {
+	if len(models) == 0 {
+		return nil
+	}
+	query := stg.db.Model(models[0])
+	if !saveAssociations {
+		query = query.Omit(clause.Associations)
+	}
+	err := query.Save(&models).Error
+	return err
+}
+
+func (stg *crudStg[M]) UpsertInBatches(models []M) error {
+	if len(models) == 0 {
+		return nil
+	}
+
+	columnCount := ColumnCount[M]()
+	paramsCount := len(models) * columnCount
+
+	if paramsCount < maxAllowedParams {
+		err := stg.db.Save(&models).Error
+		return err
+	}
+
+	err := stg.db.Transaction(func(tx *gorm.DB) error {
+		for _, chunk := range lo.Chunk(models, CalcBestBatchSize(models)) {
+			err := tx.Save(chunk).Error
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	return err
+}
+
+func (stg *crudStg[M]) ExistsById(id string) (exists bool, err error) {
 	_, err = stg.FindById(id)
 
 	exists = true
@@ -108,23 +195,51 @@ func (stg *crudStg[M]) ExistsById(id int64) (exists bool, err error) {
 	return
 }
 
-func (stg *crudStg[M]) DeleteById(id int64) error {
+func (stg *crudStg[M]) DeleteOne(model M) error {
+	err := stg.db.Delete(model).Error
+	return err
+}
+
+func (stg *crudStg[M]) DeleteMany(models []M) error {
+	if len(models) == 0 {
+		return nil
+	}
+	err := stg.db.Delete(&models).Error
+	return err
+}
+
+func (stg *crudStg[M]) DeleteById(id string) error {
 	var model M
-	db := stg.db.Delete(&model, id)
+	db := stg.db.Delete(&model, "id = ?", id)
 	if db.Error != nil {
 		return db.Error
 	}
 	if db.RowsAffected < 1 {
-		tableName := stg.getTableName()
-		entryName := pluralizer.Singular(tableName)
-		return errs.NewEntryNotFoundErr(fmt.Sprintf(errs.DefaultEntryNotFoundMessage, entryName, id))
+		return stg.entityNotFoundErr(id)
 	}
 	return nil
 }
 
-func (stg *crudStg[M]) DeleteByIds(ids []int64) error {
+func (stg *crudStg[M]) DeleteByIds(ids []string) error {
+	if len(ids) == 0 {
+		return nil
+	}
+
 	var model M
-	return stg.db.Where("id in ?", ids).Delete(&model).Error
+	if len(ids) < maxAllowedParams {
+		return stg.db.Where("id in ?", ids).Delete(&model).Error
+	} else {
+		err := stg.db.Transaction(func(tx *gorm.DB) (err error) {
+			for _, chunk := range lo.Chunk(ids, maxAllowedParams) {
+				err = stg.db.Where("id in ?", chunk).Delete(&model).Error
+				if err != nil {
+					return
+				}
+			}
+			return nil
+		})
+		return err
+	}
 }
 
 func (stg *crudStg[M]) ListAll() (models []M, err error) {
@@ -153,7 +268,7 @@ func (stg *crudStg[M]) withPagination(pagination *common.Pagination, tableAlias 
 			tagToColumnNameMap := stg.getTagToColumnNameMap()
 			columnName, ok := tagToColumnNameMap[fieldName]
 			if !ok {
-				db.AddError(fmt.Errorf("invalid field %q for search condition", fieldName))
+				db.AddError(fmt.Errorf("Invalid field %q for search condition", fieldName))
 				return db
 			}
 			db.Order(fmt.Sprintf("%s%s %s", prefix, columnName, pagination.Order))
@@ -198,7 +313,7 @@ func (stg *crudStg[M]) withSearchFilters(filters []*common.FieldFilter, tableAli
 			case common.SearchConditionNotEqual:
 				db.Not(fmt.Sprintf("%s = '%s'", formattedColumnName, v.Value))
 			default:
-				db.AddError(fmt.Errorf("unsupported search operation %q for field %q", v.Condition, fieldName))
+				db.AddError(fmt.Errorf("Unsupported search operation %q for field %q", v.Condition, fieldName))
 				return db
 			}
 		}
@@ -217,7 +332,7 @@ func (stg *crudStg[M]) withSearch(params *common.SearchParams, tableAlias ...str
 
 func (stg *crudStg[M]) updateElements(elements any) error {
 	if reflect.TypeOf(elements).Kind() != reflect.Slice {
-		return errs.Newf(errs.Internal, nil, "the provided argument is not an array")
+		return errs.Newf(errs.Internal, nil, "The provided argument is not an array.")
 	}
 
 	if reflect.ValueOf(elements).Len() == 0 {
@@ -244,18 +359,18 @@ func (stg *crudStg[M]) updateElements(elements any) error {
 			return f.DBName
 		})
 		if len(queryColumnNames) == 0 {
-			return fmt.Errorf("could not find any column to query from %q table", tableName)
+			return fmt.Errorf("Could not find any column to query from %q table", tableName)
 		}
 
 		// must contain "id" column name
 		if !lo.Contains(queryColumnNames, "id") {
-			return fmt.Errorf("cannot perform batch update on table %q without %q column", tableName, "id")
+			return fmt.Errorf("Cannot perform batch update on table %q without %q column", tableName, "id")
 		}
 
 		modelColumnNames := stg.getColumnNames()
 		if !lo.Every(modelColumnNames, queryColumnNames) {
 			invalidColumnNames := lo.Without(queryColumnNames, modelColumnNames...)
-			return fmt.Errorf("cannot perform batch update on table %q because of invalid columns: %q", tableName, strings.Join(invalidColumnNames, ", "))
+			return fmt.Errorf("Cannot perform batch update on table %q because of invalid columns: %q", tableName, strings.Join(invalidColumnNames, ", "))
 		}
 
 		err := stg.db.
@@ -329,4 +444,10 @@ func (stg *crudStg[M]) getTableName() string {
 	}
 
 	return stg.tableName
+}
+
+func (stg *crudStg[M]) entityNotFoundErr(id string) error {
+	tableName := stg.getTableName()
+	entryName := pluralizer.Singular(tableName)
+	return errs.Newf(errs.NotFound, nil, errs.DefaultEntryNotFoundMessage, entryName, id)
 }

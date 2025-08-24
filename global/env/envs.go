@@ -32,6 +32,11 @@ type Envs struct {
 		Dsn      string `env:"DB_DSN, required"`
 		LogLevel string `env:"DB_LOG_LEVEL, default=error"`
 	}
+
+	GPT struct {
+		ClientHost string `env:"GPT_HOST, required"`
+		Token      string `env:"GPT_TOKEN, required"`
+	}
 }
 
 // Load loads the environment variables from the .env files

@@ -2,7 +2,7 @@ SHELL := /bin/bash -o pipefail
 
 VERSION ?= $(shell ./scripts/gitversion.sh)
 
-DB_NAME=app_db
+DB_NAME=assistant
 DB_PORT=5432
 DB_USER=postgres
 DB_PASSWORD=postgres

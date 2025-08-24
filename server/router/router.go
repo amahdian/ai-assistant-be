@@ -33,7 +33,6 @@ type Router struct {
 
 	publicGroup *gin.RouterGroup
 	authGroup   *gin.RouterGroup
-	apiGroup    *gin.RouterGroup
 }
 
 func NewRouter(
